@@ -1,25 +1,25 @@
+import streamlit as st
 import cv2
 import numpy as np
 import pyautogui as gui
 import time
-import streamlit as st
 
 # Set keypress delay to 0
 gui.PAUSE = 0
 
-# Streamlit page settings
-st.title("Face Tracking Racing Game")
-st.write("Use your face to control the car!")
-run_game = st.button("Start Game")
-
-# Loading the model
+# Load the pre-trained face model
 model_path = './res10_300x300_ssd_iter_140000.caffemodel'
 prototxt_path = './deploy.prototxt'
+
+st.title("Web Racing Game with Face Tracking")
+st.write("Move your head left or right to steer the car!")
 
 def detect(net, frame):
     detected_faces = []
     (h, w) = frame.shape[:2]
-    blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)), 1.0, (300, 300), (104.0, 177.0, 123.0))
+    blob = cv2.dnn.blobFromImage(
+        cv2.resize(frame, (300, 300)),
+        1.0, (300, 300), (104.0, 177.0, 123.0))
     net.setInput(blob)
     detections = net.forward()
     for i in range(0, detections.shape[2]):
@@ -30,56 +30,53 @@ def detect(net, frame):
             detected_faces.append({'start': (startX, startY), 'end': (endX, endY), 'confidence': confidence})
     return detected_faces
 
+def drawFace(frame, detected_faces):
+    for face in detected_faces:
+        cv2.rectangle(frame, face['start'], face['end'], (0, 255, 0), 10)
+    return frame
+
 def move(detected_faces, bbox):
     for face in detected_faces:
         x1, y1 = face['start']
         x2, y2 = face['end']
-        # Left movement
+
+        # Left Movement
         if x1 < bbox[0]:
             gui.keyDown('left')
+            st.write("Moving Left")
         else:
             gui.keyUp('left')
 
-        # Right movement
+        # Right Movement
         if x2 > bbox[1]:
             gui.keyDown('right')
+            st.write("Moving Right")
         else:
             gui.keyUp('right')
 
-def play_game():
+def play(prototxt_path, model_path):
     net = cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
     cap = cv2.VideoCapture(0)
-    frame_width, frame_height = int(cap.get(3)), int(cap.get(4))
 
-    # Coordinates of the bounding box on the frame
+    # Bounding box coordinates
+    frame_width, frame_height = 640, 480
     left_x, top_y = frame_width // 2 - 150, frame_height // 2 - 200
     right_x, bottom_y = frame_width // 2 + 150, frame_height // 2 + 200
     bbox = [left_x, right_x, bottom_y, top_y]
 
-    while True:
+    while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
-
         frame = cv2.flip(frame, 1)
         detected_faces = detect(net, frame)
-        
-        # Draw bounding box around detected faces
-        for face in detected_faces:
-            cv2.rectangle(frame, face['start'], face['end'], (0, 255, 0), 3)
-        
-        # Move based on face position
+        frame = drawFace(frame, detected_faces)
         move(detected_faces, bbox)
-
-        # Display the webcam feed
-        st.image(frame, channels="BGR")
-        
-        # Break the loop if 'q' is pressed
+        cv2.imshow('Camera Feed', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-
     cap.release()
     cv2.destroyAllWindows()
 
-if run_game:
-    play_game()
+if st.button("Start Game"):
+    play(prototxt_path, model_path)
